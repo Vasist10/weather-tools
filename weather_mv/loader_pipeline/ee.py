@@ -769,6 +769,16 @@ class IngestIntoEETransform(SetupEarthEngine, KwargsFactoryMixin):
                 if response.status_code != 200:
                     logger.info(f"Failed to ingest asset '{asset_name}' in Earth Engine: {response.text}")
                     raise ee.EEException(response.text)
+                if self.ingest_as_virtual_asset:
+                    response_json = response.json()
+                    ingestion_state = (
+                        response_json
+                        .get("metadata", {})
+                        .get("state", "STATE_UNSPECIFIED")
+                        .upper()
+                    )
+                    if ingestion_state != "SUCCEEDED":
+                        raise ee.EEException(response.text)
                 return asset_name
             elif self.ee_asset_type == 'TABLE':  # ingest a feature collection.
                 self.wait_for_task_queue()
@@ -785,7 +795,15 @@ class IngestIntoEETransform(SetupEarthEngine, KwargsFactoryMixin):
                 return asset_name
         except ee.EEException as e:
             if "Could not parse a valid CRS from the first overview of the GeoTIFF" in repr(e):
-                logger.info(f"Failed to create asset '{asset_name}' in earth engine: {e}. Moving on...")
+                logger.error(f"Failed to create asset '{asset_name}' in earth engine: {e}. Moving on...")
+                return ""
+
+            if (
+                "whose type does not match the type of the same property of existing "
+                "assets in the same collection"
+                in repr(e)
+            ):
+                logger.error(f"Failed to ingest asset '{asset_name}' due to property mismatch: {e} Moving on...")
                 return ""
 
             logger.error(f"Failed to create asset '{asset_name}' in earth engine: {e}")
@@ -800,7 +818,7 @@ class IngestIntoEETransform(SetupEarthEngine, KwargsFactoryMixin):
     def process(self, asset_data: AssetData) -> t.Iterator[t.Tuple[str, float]]:
         """Uploads an asset into the earth engine."""
         asset_name = self.start_ingestion(asset_data)
-        metric.Metrics.counter('Success', 'IngestIntoEE').inc()
-
-        asset_start_time = asset_data.start_time
-        yield asset_name, asset_start_time
+        if asset_name:
+            metric.Metrics.counter('Success', 'IngestIntoEE').inc()
+            asset_start_time = asset_data.start_time
+            yield asset_name, asset_start_time
