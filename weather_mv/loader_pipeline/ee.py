@@ -765,6 +765,7 @@ class IngestIntoEETransform(SetupEarthEngine, KwargsFactoryMixin):
                     )
                 # Send API request
                 response = session.post(url=url, data=data, headers=headers)
+                logger.info(f"EE Asset ingestion response for {asset_name}: {response.text}")
 
                 if response.status_code != 200:
                     logger.info(f"Failed to ingest asset '{asset_name}' in Earth Engine: {response.text}")
@@ -804,6 +805,10 @@ class IngestIntoEETransform(SetupEarthEngine, KwargsFactoryMixin):
                 in repr(e)
             ):
                 logger.error(f"Failed to ingest asset '{asset_name}' due to property mismatch: {e} Moving on...")
+                return ""
+
+            if "The metadata of the TIFF could not be read in the first 10000000 bytes." in repr(e):
+                logger.error(f"Faild to ingest asset '{asset_name}', check the tiff file: {e} Moving on...")
                 return ""
 
             logger.error(f"Failed to create asset '{asset_name}' in earth engine: {e}")
